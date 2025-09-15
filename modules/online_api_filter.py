@@ -3,6 +3,10 @@ import requests
 import openai
 import pandas as pd
 import os
+import time
+
+# Import the unified API configuration manager
+from modules.api_config_manager import APIConfigurationManager, show_api_configuration_interface
 
 ##############################################################################
 # 1) Verbindungstest-Funktionen
@@ -251,6 +255,133 @@ def load_settings(profile_name: str):
 ##############################################################################
 
 def module_online_api_filter():
+    """Online API Filter - Configuration Only Interface"""
+    # Use the unified API configuration interface
+    show_api_configuration_interface()
+
+    # Add setup wizard guidance
+    st.markdown("---")
+    st.subheader("🧭 Setup Wizard")
+
+    api_manager = APIConfigurationManager()
+    if api_manager.is_configured():
+        st.success("✅ **Schritt 1 abgeschlossen**: APIs wurden erfolgreich konfiguriert!")
+
+        # Additional search configuration options
+        st.subheader("⚙️ Suchkonfiguration")
+        st.info("Diese Einstellungen werden an das Unified Search Modul weitergegeben.")
+
+        # Initialize search settings in session state
+        if "search_settings" not in st.session_state:
+            st.session_state["search_settings"] = {
+                "default_max_results": 50,
+                "default_sources": ["pubmed", "europe_pmc"],
+                "enable_semantic_scholar": False,
+                "auto_save_excel": True,
+                "auto_send_email": False
+            }
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.write("**🔍 Standard-Sucheinstellungen:**")
+            default_max_results = st.number_input(
+                "Standard Max. Ergebnisse:",
+                min_value=10, max_value=200,
+                value=st.session_state["search_settings"]["default_max_results"]
+            )
+
+            auto_save_excel = st.checkbox(
+                "📊 Automatisch in Excel speichern",
+                value=st.session_state["search_settings"]["auto_save_excel"]
+            )
+
+            auto_send_email = st.checkbox(
+                "📧 Automatisch Email versenden",
+                value=st.session_state["search_settings"]["auto_send_email"]
+            )
+
+        with col2:
+            st.write("**📚 Standard-Datenbanken:**")
+            available_apis = api_manager.get_available_apis()
+
+            # Build default sources based on available APIs
+            default_sources = []
+            use_pubmed = st.checkbox(
+                "🏥 PubMed verwenden",
+                value="pubmed" in available_apis,
+                disabled="pubmed" not in available_apis
+            )
+            if use_pubmed and "pubmed" in available_apis:
+                default_sources.append("pubmed")
+
+            use_europe_pmc = st.checkbox(
+                "🌍 Europe PMC verwenden",
+                value="europe_pmc" in available_apis,
+                disabled="europe_pmc" not in available_apis
+            )
+            if use_europe_pmc and "europe_pmc" in available_apis:
+                default_sources.append("europe_pmc")
+
+            enable_semantic_scholar = st.checkbox(
+                "🔬 Semantic Scholar aktivieren",
+                value="semantic_scholar" in available_apis and st.session_state["search_settings"]["enable_semantic_scholar"],
+                disabled="semantic_scholar" not in available_apis,
+                help="⚠️ Kann aufgrund von Rate Limits langsamer sein"
+            )
+            if enable_semantic_scholar and "semantic_scholar" in available_apis:
+                default_sources.append("semantic_scholar")
+
+        # Save settings
+        if st.button("💾 **Einstellungen speichern**"):
+            st.session_state["search_settings"].update({
+                "default_max_results": default_max_results,
+                "default_sources": default_sources,
+                "enable_semantic_scholar": enable_semantic_scholar,
+                "auto_save_excel": auto_save_excel,
+                "auto_send_email": auto_send_email
+            })
+            st.success("✅ Sucheinstellungen gespeichert!")
+            time.sleep(1)
+            st.rerun()
+
+        st.markdown("---")
+        st.info("**🚀 Nächste Schritte:**")
+        st.write("1. Gehen Sie zur **'🔍 Paper Search'**")
+        st.write("2. Starten Sie Ihre erste Paper-Suche mit den konfigurierten Einstellungen")
+        st.write("3. Konfigurieren Sie optional Email-Benachrichtigungen")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔍 **Zur Paper Search**", type="primary"):
+                st.session_state["current_page"] = "🔍 Paper Search"
+                st.rerun()
+        with col2:
+            if st.button("📧 **Email konfigurieren**"):
+                st.session_state["current_page"] = "📧 Email Module"
+                st.rerun()
+    else:
+        st.warning("⚠️ **Schritt 1**: Konfigurieren Sie zuerst die APIs, indem Sie oben auf **'🔍 APIs testen'** klicken.")
+
+        # Show help for first-time users
+        with st.expander("❓ Hilfe - Erste Schritte"):
+            st.markdown("""
+            **So starten Sie:**
+
+            1. 🔍 **Klicken Sie auf "APIs testen"** oben auf dieser Seite
+            2. ⏳ **Warten Sie** bis alle API-Tests abgeschlossen sind
+            3. ✅ **Bestätigen Sie** dass mindestens eine API verfügbar ist
+            4. ⚙️ **Konfigurieren Sie** Ihre Standard-Sucheinstellungen
+            5. 🚀 **Gehen Sie zur Unified Search** und starten Sie Ihre erste Suche!
+
+            **Warum ist das notwendig?**
+            - Stellt sicher, dass die Datenbank-APIs erreichbar sind
+            - Verhindert Fehler während der Suche
+            - Ermöglicht optimale Performance mit verfügbaren APIs
+            """)
+
+def legacy_module_online_api_filter():
+    """Legacy API Filter with Gene Filter functionality"""
     st.title("Modul 1: API-Auswahl & Gene-Filter mit Profile-Speicherung")
 
     # Profilverwaltung: Laden

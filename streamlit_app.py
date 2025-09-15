@@ -31,6 +31,16 @@ from modules.excel_manager import initialize_excel_manager, show_excel_manager_d
 # Import Unified Paper Search System
 from modules.unified_paper_search import module_unified_search
 
+# Import API Configuration Manager
+from modules.api_config_manager import APIConfigurationManager
+
+# Import Paper Excel Filler
+try:
+    from modules.page_excel_filler import page_excel_filler
+    PAPER_EXCEL_FILLER_AVAILABLE = True
+except ImportError as e:
+    PAPER_EXCEL_FILLER_AVAILABLE = False
+
 # ------------------------------------------------------------------
 # Secrets und Umgebungsvariablen - Streamlit Cloud First
 # ------------------------------------------------------------------
@@ -547,8 +557,40 @@ def module_paperqa2():
         st.write("Answer: This is a dummy answer to the question:", question)
 
 def page_home():
-    st.title("Welcome to the Main Menu")
+    st.title("🏠 Welcome to the Main Menu")
     st.write("Choose a module in the sidebar to proceed.")
+
+    # API Configuration Status
+    api_manager = APIConfigurationManager()
+    is_configured = api_manager.is_configured()
+
+    st.subheader("🔧 System Status")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        if is_configured:
+            st.success("✅ **API-Konfiguration abgeschlossen**")
+            available_apis = api_manager.get_available_apis()
+            st.write(f"**Verfügbare APIs:** {len(available_apis)}")
+            for api in available_apis:
+                st.write(f"• {api.replace('_', ' ').title()}")
+        else:
+            st.error("⚠️ **API-Konfiguration erforderlich**")
+            st.write("**Nächste Schritte:**")
+            st.write("1. Gehen Sie zu **'📊 Online-API Filter'**")
+            st.write("2. Testen Sie die API-Verbindungen")
+            st.write("3. Starten Sie dann die **'🔍 Unified Search'**")
+
+    with col2:
+        if not is_configured:
+            if st.button("🔧 **Zur API-Konfiguration**", type="primary"):
+                st.session_state["current_page"] = "📊 Online-API Filter"
+                st.rerun()
+        else:
+            if st.button("🔍 **Paper Search starten**", type="primary"):
+                st.session_state["current_page"] = "🔍 Paper Search"
+                st.rerun()
+
     try:
         st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
     except:
@@ -894,19 +936,41 @@ def page_home():
     col_action1, col_action2, col_action3 = st.columns(3)
     
     with col_action1:
-        if st.button("🔍 **Start Paper Search**", use_container_width=True):
+        if st.button("🔍 **Start Paper Search**"):
             st.session_state["current_page"] = "Paper Search"
             st.rerun()
     
     with col_action2:
-        if st.button("📧 **Configure Email**", use_container_width=True):
+        if st.button("📧 **Configure Email**"):
             st.session_state["current_page"] = "Email Module"
             st.rerun()
     
     with col_action3:
-        if st.button("📊 **View Analysis**", use_container_width=True):
+        if st.button("📊 **View Analysis**"):
             st.session_state["current_page"] = "Analyze Paper"
             st.rerun()
+
+    # New Excel Filler module promotion
+    if PAPER_EXCEL_FILLER_AVAILABLE:
+        st.markdown("---")
+        st.subheader("🆕 Neue Funktion: Paper Excel Filler")
+
+        col_new1, col_new2 = st.columns([2, 1])
+
+        with col_new1:
+            st.info("🤖 **Automatische Excel-Ausfüllung** mit Claude AI! Verwandeln Sie wissenschaftliche Papers in ausgefüllte Excel-Vorlagen.")
+            st.write("**Features:**")
+            st.write("• 🧬 Automatische Gen-Erkennung")
+            st.write("• 🤖 Claude AI Analyse")
+            st.write("• 📊 Smart Paper-Auswahl")
+            st.write("• 💾 Batch-Verarbeitung")
+
+        with col_new2:
+            if st.button("🚀 **Excel Filler testen**", type="primary"):
+                st.session_state["current_page"] = "📊 Paper Excel Filler"
+                st.rerun()
+
+            st.metric("📊 Status", "Verfügbar")
     
     try:
         st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
@@ -914,9 +978,13 @@ def page_home():
         st.info("Welcome image not found - continuing without image")
 
 def page_paper_search():
-    """Integrierte Paper-Suche mit Email-Benachrichtigung"""
-    st.title("🔍 **Paper Search with Email Notifications**")
-    st.write("Search PubMed and get automatic email notifications!")
+    """Diese Funktion ist nicht mehr verfügbar - benutzen Sie die Unified Search"""
+    st.error("❌ Diese alte Suchfunktion ist nicht mehr verfügbar!")
+    st.info("👉 Verwenden Sie stattdessen: **🔍 Paper Search** (Unified Search)")
+
+    if st.button("🔍 Zur neuen Paper Search", type="primary"):
+        st.session_state["current_page"] = "🔍 Paper Search"
+        st.rerun()
     
     # Initialize search engine
     search_engine = IntegratedPaperSearch()
@@ -1313,20 +1381,41 @@ def page_analyze_paper():
 def sidebar_module_navigation():
     st.sidebar.title("📋 Module Navigation")
 
+    # Check API configuration status
+    api_manager = APIConfigurationManager()
+    is_configured = api_manager.is_configured()
+
     pages = {
-        "🏠 Home": page_home,
-        "🔍 Unified Search": page_unified_search,
-        "📧 Email Module": page_email_module,
         "📊 Online-API Filter": page_online_api_filter,
-        "📝 Codewords & PubMed": page_codewords_pubmed,
-        "🔬 Analyze Paper": page_analyze_paper,
+        "🏠 Home": page_home,
+        "🔍 Paper Search": page_unified_search,
+        "📧 Email Module": page_email_module,
         "📁 Excel Manager": page_excel_manager,
-        "🔍 Legacy Search": page_paper_search,
+        "🔬 Analyze Paper": page_analyze_paper,
     }
 
+    # Add Paper Excel Filler if available
+    if PAPER_EXCEL_FILLER_AVAILABLE:
+        pages["📊 Paper Excel Filler"] = page_excel_filler
+
     for label, page in pages.items():
-        if st.sidebar.button(label, key=label, use_container_width=True):
-            st.session_state["current_page"] = label
+        # Special handling for Paper Search - require API configuration
+        if label == "🔍 Paper Search":
+            if is_configured:
+                button_label = f"{label} ✅"
+                disabled = False
+            else:
+                button_label = f"{label} ⚠️"
+                disabled = True
+
+            if st.sidebar.button(button_label, key=label, disabled=disabled):
+                st.session_state["current_page"] = label
+
+            if disabled:
+                st.sidebar.caption("⚠️ API-Konfiguration erforderlich")
+        else:
+            if st.sidebar.button(label, key=label):
+                st.session_state["current_page"] = label
     
     if "current_page" not in st.session_state:
         st.session_state["current_page"] = "🏠 Home"
