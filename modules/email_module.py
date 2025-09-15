@@ -1732,8 +1732,8 @@ def execute_excel_integrated_search(query: str, max_results: int, date_filter: s
         progress_bar.progress(1.0)
         status_text.text("✅ Excel-integrierte Suche erfolgreich abgeschlossen!")
         
-        safe_get_status("total_searches") += 1
-        safe_get_status("total_papers") += added_count
+        safe_update_status("total_searches", safe_get_status("total_searches", 0) + 1)
+        safe_update_status("total_papers", safe_get_status("total_papers", 0) + added_count)
         safe_update_status("last_search", datetime.datetime.now().isoformat())
         
         # Erfolgs-Statistik anzeigen
@@ -2014,7 +2014,7 @@ Ihr Excel-integriertes Paper-Suche System"""
     
     # Ergebnis anzeigen
     if success:
-        safe_get_status("total_emails") += 1
+        safe_update_status("total_emails", safe_get_status("total_emails", 0) + 1)
         st.success(f"📧 **Excel-integrierte Email erfolgreich versendet!**\n{status_message}")
         
         with st.expander("📋 Email-Details"):
@@ -2149,7 +2149,7 @@ Ihr Paper-Suche System"""
     
     # Ergebnis anzeigen
     if success:
-        safe_get_status("total_emails") += 1
+        safe_update_status("total_emails", safe_get_status("total_emails", 0) + 1)
         st.success(f"📧 **Email erfolgreich versendet!**\n{status_message}")
         st.balloons()
         
@@ -3481,7 +3481,7 @@ System: Paper-Suche & Email-System v3.0 (Excel-Integration + Mehrere Empfänger)
     
     # Update System-Status
     if success:
-        safe_get_status("total_emails") += 1
+        safe_update_status("total_emails", safe_get_status("total_emails", 0) + 1)
     
     # Ergebnis anzeigen
     if success:
