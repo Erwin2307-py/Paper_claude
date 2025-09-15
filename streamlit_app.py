@@ -28,6 +28,9 @@ from google_trans_new import google_translator
 # Import Excel Manager for persistent file handling
 from modules.excel_manager import initialize_excel_manager, show_excel_manager_dashboard
 
+# Import Unified Paper Search System
+from modules.unified_paper_search import module_unified_search
+
 # ------------------------------------------------------------------
 # Secrets und Umgebungsvariablen - Streamlit Cloud First
 # ------------------------------------------------------------------
@@ -1191,6 +1194,10 @@ def page_online_api_filter():
     if st.button("🏠 Back to Main Menu"):
         st.session_state["current_page"] = "Home"
 
+def page_unified_search():
+    """Einheitliche Paper-Suche mit Excel- und Email-Integration"""
+    module_unified_search()
+
 def page_excel_manager():
     """Excel Manager page for persistent file management"""
     st.title("📁 Excel File Manager")
@@ -1308,12 +1315,13 @@ def sidebar_module_navigation():
 
     pages = {
         "🏠 Home": page_home,
-        "🔍 Paper Search": page_paper_search,
+        "🔍 Unified Search": page_unified_search,
         "📧 Email Module": page_email_module,
         "📊 Online-API Filter": page_online_api_filter,
         "📝 Codewords & PubMed": page_codewords_pubmed,
         "🔬 Analyze Paper": page_analyze_paper,
         "📁 Excel Manager": page_excel_manager,
+        "🔍 Legacy Search": page_paper_search,
     }
 
     for label, page in pages.items():
