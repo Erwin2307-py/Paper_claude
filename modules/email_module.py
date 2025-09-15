@@ -4325,10 +4325,62 @@ def validate_excel_integrity():
         st.error(f"❌ **Validierung-Fehler:** {str(e)}")
 
 
-def repair_missing_sheets():
+def repair_excel_database(excel_path):
+    """Repariert beschädigte Excel-Datenbank"""
+    try:
+        st.warning("🔧 Versuche Excel-Datenbank zu reparieren...")
+
+        # Backup erstellen
+        backup_path = f"{excel_path}.backup_{int(time.time())}"
+        if os.path.exists(excel_path):
+            import shutil
+            shutil.copy2(excel_path, backup_path)
+            st.info(f"📁 Backup erstellt: {backup_path}")
+
+        # Neue Datenbank erstellen
+        create_fresh_persistent_excel()
+        st.success("✅ Excel-Datenbank repariert!")
+
+    except Exception as e:
+        st.error(f"❌ Reparatur fehlgeschlagen: {str(e)}")
+
+def repair_missing_sheets(wb=None, excel_path=None):
     """Erweiterte Excel-Sheets Reparatur mit Backup"""
+    if not wb or not excel_path:
+        st.warning("⚠️ Excel-Sheets Reparatur übersprungen - Parameter fehlen")
+        return
+
+    try:
+        # Überprüfe ob wichtige Sheets fehlen
+        required_sheets = ["Overview", "Template"]
+        missing_sheets = [sheet for sheet in required_sheets if sheet not in wb.sheetnames]
+
+        if missing_sheets:
+            st.info(f"🔧 Repariere fehlende Sheets: {', '.join(missing_sheets)}")
+
+            for sheet_name in missing_sheets:
+                if sheet_name == "Overview":
+                    overview = wb.create_sheet("Overview")
+                    headers = ["Search_Term", "Total_Papers", "Last_Updated", "Sheet_Name", "Relevance_Score", "Status", "Notes"]
+                    for i, header in enumerate(headers, 1):
+                        overview.cell(row=1, column=i, value=header)
+
+                elif sheet_name == "Template":
+                    template = wb.create_sheet("Template")
+                    headers = ["Title", "Authors", "Journal", "Year", "DOI", "Abstract", "Keywords", "PubMed_ID", "Citations", "Relevance_Score", "Category", "Methodology", "Key_Findings", "Notes", "Date_Added"]
+                    for i, header in enumerate(headers, 1):
+                        template.cell(row=1, column=i, value=header)
+
+            wb.save(excel_path)
+            st.success("✅ Fehlende Sheets repariert!")
+
+    except Exception as e:
+        st.error(f"❌ Sheet-Reparatur fehlgeschlagen: {str(e)}")
+
+def repair_missing_sheets_old():
+    """Erweiterte Excel-Sheets Reparatur mit Backup (Original-UI-Version)"""
     st.subheader("🔧 Excel-Sheets Reparatur & Wartung")
-    
+
     template_path = st.session_state["excel_template"]["file_path"]
     
     # Backup erstellen vor Reparatur
