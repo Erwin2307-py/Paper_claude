@@ -556,45 +556,6 @@ def module_paperqa2():
     if st.button("Submit question"):
         st.write("Answer: This is a dummy answer to the question:", question)
 
-def page_home():
-    st.title("🏠 Welcome to the Main Menu")
-    st.write("Choose a module in the sidebar to proceed.")
-
-    # API Configuration Status
-    api_manager = APIConfigurationManager()
-    is_configured = api_manager.is_configured()
-
-    st.subheader("🔧 System Status")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if is_configured:
-            st.success("✅ **API-Konfiguration abgeschlossen**")
-            available_apis = api_manager.get_available_apis()
-            st.write(f"**Verfügbare APIs:** {len(available_apis)}")
-            for api in available_apis:
-                st.write(f"• {api.replace('_', ' ').title()}")
-        else:
-            st.error("⚠️ **API-Konfiguration erforderlich**")
-            st.write("**Nächste Schritte:**")
-            st.write("1. Gehen Sie zu **'📊 Online-API Filter'**")
-            st.write("2. Testen Sie die API-Verbindungen")
-            st.write("3. Starten Sie dann die **'🔍 Unified Search'**")
-
-    with col2:
-        if not is_configured:
-            if st.button("🔧 **Zur API-Konfiguration**", type="primary"):
-                st.session_state["current_page"] = "📊 Online-API Filter"
-                st.rerun()
-        else:
-            if st.button("🔍 **Paper Search starten**", type="primary"):
-                st.session_state["current_page"] = "🔍 Paper Search"
-                st.rerun()
-
-    try:
-        st.image("Bild1.jpg", caption="Willkommen!", use_container_width=False, width=600)
-    except:
-        st.info("Bild1.jpg not found - continuing without image")
 
 def page_codewords_pubmed():
     st.title("Codewords & PubMed Settings")
