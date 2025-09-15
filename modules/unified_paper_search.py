@@ -567,7 +567,6 @@ class UnifiedPaperSearcher:
 
         return unique_papers
 
-@require_api_configuration
 def show_unified_search_interface():
     """Hauptinterface für die einzige Paper-Suche im System"""
     st.title("🔍 Paper Search - Das einzige Suchmodul")

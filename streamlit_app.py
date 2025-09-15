@@ -1360,23 +1360,9 @@ def sidebar_module_navigation():
         pages["📊 Paper Excel Filler"] = page_excel_filler
 
     for label, page in pages.items():
-        # Special handling for Paper Search - require API configuration
-        if label == "🔍 Paper Search":
-            if is_configured:
-                button_label = f"{label} ✅"
-                disabled = False
-            else:
-                button_label = f"{label} ⚠️"
-                disabled = True
-
-            if st.sidebar.button(button_label, key=label, disabled=disabled):
-                st.session_state["current_page"] = label
-
-            if disabled:
-                st.sidebar.caption("⚠️ API-Konfiguration erforderlich")
-        else:
-            if st.sidebar.button(label, key=label):
-                st.session_state["current_page"] = label
+        # All pages are now directly accessible - no API dependency
+        if st.sidebar.button(label, key=label):
+            st.session_state["current_page"] = label
     
     if "current_page" not in st.session_state:
         st.session_state["current_page"] = "🏠 Home"
