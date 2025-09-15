@@ -378,7 +378,7 @@ def create_master_excel_template():
             info_sheet.column_dimensions['B'].width = 40
             
             wb.save(template_path)
-            st.session_state["system_status"]["excel_sheets"] = len(wb.sheetnames)
+            safe_update_status("excel_sheets", len(wb.sheetnames))
             
         except Exception as e:
             st.error(f"❌ Fehler beim Erstellen des Master-Templates: {str(e)}")
@@ -505,7 +505,7 @@ def ensure_persistent_excel_database():
             
             # Lade Statistiken
             stats = get_search_statistics_from_excel()
-            st.session_state["system_status"]["excel_sheets"] = stats.get("total_sheets", 0)
+            safe_update_status("excel_sheets", stats.get("total_sheets", 0))
             st.session_state["persistent_search_terms"] = stats.get("search_terms", [])
             
             # Erfolg-Meldung
@@ -595,7 +595,7 @@ def create_fresh_persistent_excel():
         wb.save(excel_path)
         
         # Session State aktualisieren
-        st.session_state["system_status"]["excel_sheets"] = 2
+        safe_update_status("excel_sheets", 2)
         st.session_state["persistent_search_terms"] = []
         
         st.success(f"🆕 **Neue persistente Excel-Datenbank erstellt:** {excel_path}")
@@ -657,7 +657,7 @@ def show_dashboard():
     
     # Excel-Statistiken holen
     excel_stats = get_search_statistics_from_excel()
-    status = st.session_state["system_status"]
+    ensure_system_status(); status = st.session_state["system_status"]
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -820,8 +820,8 @@ def check_due_searches_silent():
                 continue
         
         # Update Session State
-        st.session_state["system_status"]["pending_automation_searches"] = due_count
-        st.session_state["system_status"]["last_automation_check"] = now.isoformat()
+        safe_update_status("pending_automation_searches", due_count)
+        safe_update_status("last_automation_check", now.isoformat())
         
         return due_count
         
@@ -1377,7 +1377,7 @@ def show_dashboard():
     
     # Excel-Statistiken holen
     excel_stats = get_search_statistics_from_excel()
-    status = st.session_state["system_status"]
+    ensure_system_status(); status = st.session_state["system_status"]
     
     col1, col2, col3, col4 = st.columns(4)
     
@@ -1732,9 +1732,9 @@ def execute_excel_integrated_search(query: str, max_results: int, date_filter: s
         progress_bar.progress(1.0)
         status_text.text("✅ Excel-integrierte Suche erfolgreich abgeschlossen!")
         
-        st.session_state["system_status"]["total_searches"] += 1
-        st.session_state["system_status"]["total_papers"] += added_count
-        st.session_state["system_status"]["last_search"] = datetime.datetime.now().isoformat()
+        safe_get_status("total_searches") += 1
+        safe_get_status("total_papers") += added_count
+        safe_update_status("last_search", datetime.datetime.now().isoformat())
         
         # Erfolgs-Statistik anzeigen
         with st.expander("📊 **Such-Statistik für diese Suche:**"):
@@ -2014,7 +2014,7 @@ Ihr Excel-integriertes Paper-Suche System"""
     
     # Ergebnis anzeigen
     if success:
-        st.session_state["system_status"]["total_emails"] += 1
+        safe_get_status("total_emails") += 1
         st.success(f"📧 **Excel-integrierte Email erfolgreich versendet!**\n{status_message}")
         
         with st.expander("📋 Email-Details"):
@@ -2149,7 +2149,7 @@ Ihr Paper-Suche System"""
     
     # Ergebnis anzeigen
     if success:
-        st.session_state["system_status"]["total_emails"] += 1
+        safe_get_status("total_emails") += 1
         st.success(f"📧 **Email erfolgreich versendet!**\n{status_message}")
         st.balloons()
         
@@ -3410,7 +3410,7 @@ def send_status_email_multiple():
         return
     
     # System-Status sammeln
-    status = st.session_state["system_status"]
+    ensure_system_status(); status = st.session_state["system_status"]
     excel_stats = get_search_statistics_from_excel()
     email_history = st.session_state.get("email_history", [])
     
@@ -3481,7 +3481,7 @@ System: Paper-Suche & Email-System v3.0 (Excel-Integration + Mehrere Empfänger)
     
     # Update System-Status
     if success:
-        st.session_state["system_status"]["total_emails"] += 1
+        safe_get_status("total_emails") += 1
     
     # Ergebnis anzeigen
     if success:
@@ -4325,9 +4325,38 @@ def validate_excel_integrity():
         st.error(f"❌ **Validierung-Fehler:** {str(e)}")
 
 
+def ensure_system_status():
+    """Stellt sicher, dass system_status initialisiert ist"""
+    if "system_status" not in st.session_state:
+        st.session_state["system_status"] = {
+            "total_searches": 0,
+            "total_papers": 0,
+            "total_emails": 0,
+            "excel_sheets": 0,
+            "last_search": None,
+            "last_email": None,
+            "pending_automation_searches": 0,
+            "last_automation_check": None,
+            "email_notifications": True,
+            "auto_excel_backup": True
+        }
+
+def safe_update_status(key, value):
+    """Sicher system_status aktualisieren"""
+    ensure_system_status()
+    st.session_state["system_status"][key] = value
+
+def safe_get_status(key, default=None):
+    """Sicher system_status lesen"""
+    ensure_system_status()
+    return st.session_state["system_status"].get(key, default)
+
 def repair_excel_database(excel_path):
     """Repariert beschädigte Excel-Datenbank"""
     try:
+        # Sicherstellen dass Session State initialisiert ist
+        ensure_system_status()
+
         st.warning("🔧 Versuche Excel-Datenbank zu reparieren...")
 
         # Backup erstellen
@@ -4337,9 +4366,18 @@ def repair_excel_database(excel_path):
             shutil.copy2(excel_path, backup_path)
             st.info(f"📁 Backup erstellt: {backup_path}")
 
-        # Neue Datenbank erstellen
-        create_fresh_persistent_excel()
-        st.success("✅ Excel-Datenbank repariert!")
+        # Neue Datenbank erstellen (verwende Excel Manager)
+        try:
+            from modules.excel_manager import PersistentExcelManager
+            manager = PersistentExcelManager()
+            manager.create_persistent_paper_database(excel_path)
+            st.success("✅ Excel-Datenbank repariert!")
+        except Exception as repair_error:
+            st.error(f"❌ Datenbank-Erstellung fehlgeschlagen: {repair_error}")
+            # Fallback: Erstelle einfache Excel-Datei
+            wb = openpyxl.Workbook()
+            wb.save(excel_path)
+            st.info("📁 Einfache Excel-Datei als Fallback erstellt")
 
     except Exception as e:
         st.error(f"❌ Reparatur fehlgeschlagen: {str(e)}")
@@ -5237,7 +5275,7 @@ def show_detailed_statistics():
     """Detaillierte Statistiken mit Excel-Integration"""
     st.subheader("📈 Detaillierte Statistiken")
     
-    status = st.session_state["system_status"]
+    ensure_system_status(); status = st.session_state["system_status"]
     search_history = st.session_state.get("search_history", [])
     email_history = st.session_state.get("email_history", [])
     excel_stats = get_search_statistics_from_excel()
@@ -5479,7 +5517,7 @@ def save_search_to_history(query: str, papers: List[Dict], new_papers: List[Dict
 
 def update_system_status(paper_count: int):
     """Aktualisiert System-Status"""
-    status = st.session_state["system_status"]
+    ensure_system_status(); status = st.session_state["system_status"]
     status["total_searches"] += 1
     status["total_papers"] += paper_count
     status["last_search"] = datetime.datetime.now().isoformat()
