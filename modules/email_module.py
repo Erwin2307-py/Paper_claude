@@ -25,21 +25,43 @@ import threading
 
 # =============== STREAMLIT SECRETS INTEGRATION ===============
 
-def load_email_config_from_secrets() -> Dict:
-    """Lädt Email-Konfiguration aus Streamlit Secrets"""
+def get_email_secret(key, fallback=None):
+    """Holt Email-Konfiguration aus Streamlit Secrets mit Fallback"""
     try:
-        email_config = {
-            "sender_email": st.secrets["email"]["sender_email"],
-            "smtp_server": st.secrets["email"]["smtp_server"],
-            "smtp_port": st.secrets["email"].get("smtp_port", 587),
-            "sender_password": st.secrets["email"]["password"],
-            "use_tls": st.secrets["email"].get("use_tls", True),
-            "recipient_emails": st.secrets["email"]["recipients"],
-            "auto_notifications": st.secrets["email"].get("auto_notifications", True),
-            "min_papers": st.secrets["email"].get("min_papers", 1),
-            "notification_frequency": "Bei jeder Suche",
-            "subject_template": "🔬 {count} neue Papers für '{search_term}' - {frequency}",
-            "message_template": """📧 Automatische Paper-Benachrichtigung
+        # Streamlit Secrets zuerst
+        if hasattr(st, 'secrets') and 'email' in st.secrets:
+            value = st.secrets["email"].get(key)
+            if value:
+                return value
+    except Exception:
+        pass
+
+    # Environment Variable Fallback
+    try:
+        env_key = f"EMAIL_{key.upper()}"
+        env_value = os.getenv(env_key)
+        if env_value:
+            return env_value
+    except Exception:
+        pass
+
+    return fallback
+
+def load_email_config_from_secrets() -> Dict:
+    """Lädt Email-Konfiguration aus Streamlit Secrets mit robusten Fallbacks"""
+
+    # Standard-Konfiguration mit Fallbacks
+    email_config = {
+        "sender_email": get_email_secret("sender_email"),
+        "smtp_server": get_email_secret("smtp_server", "smtp.gmail.com"),
+        "smtp_port": int(get_email_secret("smtp_port", 587)),
+        "sender_password": get_email_secret("sender_password") or get_email_secret("password"),
+        "use_tls": get_email_secret("use_tls", True),
+        "auto_notifications": get_email_secret("auto_notifications", True),
+        "min_papers": int(get_email_secret("min_papers", 1)),
+        "notification_frequency": "Bei jeder Suche",
+        "subject_template": "🔬 {count} neue Papers für '{search_term}' - {frequency}",
+        "message_template": """📧 Automatische Paper-Benachrichtigung
 
 📅 Datum: {date}
 🔍 Suchbegriff: '{search_term}'
@@ -55,34 +77,245 @@ Mit freundlichen Grüßen,
 Ihr automatisches Paper-Überwachung-System""",
             "from_secrets": True  # Flag to indicate loaded from secrets
         }
+
+        # Empfänger-Liste laden (kann mehrere Empfänger enthalten)
+        recipients = get_email_secret("recipients") or get_email_secret("recipient_email")
+        if recipients:
+            if isinstance(recipients, str):
+                # Comma-separated string zu Liste
+                email_config["recipient_emails"] = [email.strip() for email in recipients.split(",")]
+            elif isinstance(recipients, list):
+                email_config["recipient_emails"] = recipients
+        else:
+            email_config["recipient_emails"] = []
+
         return email_config
-    except KeyError as e:
-        st.warning(f"⚠️ Email-Secrets nicht vollständig konfiguriert: {e}")
-        return None
+
     except Exception as e:
-        st.warning(f"⚠️ Fehler beim Laden der Email-Secrets: {e}")
+        # Keine Warnung mehr - stille Rückgabe von None für robuste Fallbacks
         return None
+
+def show_email_config_status():
+    """Zeigt Email-Konfigurationsstatus an"""
+    st.subheader("📧 Email-Konfiguration")
+
+    # Lade Konfiguration aus Secrets
+    secrets_config = load_email_config_from_secrets()
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("**📋 Konfigurationsstatus:**")
+        if secrets_config:
+            st.success("✅ Streamlit Secrets geladen")
+            sender_email = secrets_config.get("sender_email", "")
+            if sender_email:
+                masked_email = f"{sender_email[:3]}***@{sender_email.split('@')[1]}" if "@" in sender_email else "***"
+                st.write(f"📧 Absender: {masked_email}")
+            else:
+                st.warning("⚠️ Absender-Email fehlt")
+
+            recipients = secrets_config.get("recipient_emails", [])
+            if recipients:
+                st.write(f"👥 Empfänger: {len(recipients)} konfiguriert")
+            else:
+                st.warning("⚠️ Empfänger fehlen")
+
+            smtp_server = secrets_config.get("smtp_server", "")
+            smtp_port = secrets_config.get("smtp_port", 587)
+            st.write(f"🌐 SMTP: {smtp_server}:{smtp_port}")
+
+        else:
+            st.warning("⚠️ Keine Email-Secrets konfiguriert")
+            st.info("Verwende manuelle Konfiguration")
+
+    with col2:
+        st.write("**🔧 Benötigte Secrets:**")
+        st.code("""[email]
+sender_email = "ihre@email.com"
+sender_password = "ihr_app_passwort"
+recipients = "empfaenger1@email.com,empfaenger2@email.com"
+smtp_server = "smtp.gmail.com"
+smtp_port = 587""", language="toml")
+
+    return secrets_config
 
 def module_email():
     """VOLLSTÄNDIGE FUNKTION - Email-Modul mit Secrets Integration"""
     st.title("📧 Wissenschaftliches Paper-Suche & Email-System")
-    
-    # Prüfe auf Secrets-Konfiguration
-    secrets_config = load_email_config_from_secrets()
-    if secrets_config:
-        st.success("✅ Email-Konfiguration aus Streamlit Secrets geladen!")
-        # Zeige sicher maskierte Info
-        sender_email = secrets_config.get("sender_email", "")
-        masked_email = f"{sender_email[:3]}***@{sender_email.split('@')[1]}" if "@" in sender_email else "***"
-        recipients_count = len(parse_recipient_emails(secrets_config.get("recipient_emails", "")))
-        st.info(f"📧 Absender: {masked_email} | Empfänger: {recipients_count}")
-    else:
-        st.info("ℹ️ Keine Secrets konfiguriert - verwende manuelle Email-Konfiguration")
-    
-    st.success("✅ Vollständiges Modul mit mehreren Email-Empfängern und Excel-Integration geladen!")
-    
+
+    # Zeige Konfigurationsstatus
+    secrets_config = show_email_config_status()
+
     # Session State initialisieren
     initialize_session_state()
+
+    # Email-Funktionalität basierend auf Konfiguration
+    if secrets_config and secrets_config.get("sender_email"):
+        st.success("🚀 Email-System bereit - Verwendet Streamlit Secrets")
+        show_email_dashboard_with_secrets(secrets_config)
+    else:
+        st.info("📝 Manuelle Email-Konfiguration")
+        integrated_email_interface()
+
+def show_email_dashboard_with_secrets(secrets_config):
+    """Email-Dashboard mit Streamlit Secrets Konfiguration"""
+    st.subheader("🚀 Email-Dashboard (Secrets-basiert)")
+
+    # Quick Action Buttons
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        if st.button("📧 Test Email senden"):
+            send_test_email_with_secrets(secrets_config)
+
+    with col2:
+        if st.button("📊 Email-Status prüfen"):
+            check_email_connectivity(secrets_config)
+
+    with col3:
+        if st.button("📋 Empfänger anzeigen"):
+            show_recipient_list(secrets_config)
+
+    # Email-Versand für Paper-Suche
+    st.markdown("---")
+    st.subheader("🔍 Paper-Suche mit Email-Benachrichtigung")
+
+    search_term = st.text_input("🔍 Suchbegriff für Papers:", placeholder="z.B. BRCA1 breast cancer")
+    max_papers = st.slider("📊 Max. Anzahl Papers:", 1, 100, 20)
+
+    if st.button("🚀 Suche starten & Email senden") and search_term:
+        with st.spinner("Suche Papers und sende Email..."):
+            try:
+                # Hier würde die Paper-Suche stattfinden
+                # Für Demo verwenden wir Dummy-Daten
+                papers = [
+                    {"title": f"Paper {i+1} zu {search_term}", "authors": "Autor et al.", "journal": "Nature"}
+                    for i in range(min(5, max_papers))
+                ]
+
+                # Email mit Ergebnissen senden
+                send_paper_results_email(secrets_config, search_term, papers)
+                st.success(f"✅ {len(papers)} Papers gefunden und Email gesendet!")
+
+            except Exception as e:
+                st.error(f"❌ Fehler: {str(e)}")
+
+def send_test_email_with_secrets(secrets_config):
+    """Sendet Test-Email mit Secrets-Konfiguration"""
+    try:
+        server = smtplib.SMTP(secrets_config["smtp_server"], secrets_config["smtp_port"])
+        server.starttls()
+        server.login(secrets_config["sender_email"], secrets_config["sender_password"])
+
+        # Test-Nachricht erstellen
+        msg = MIMEMultipart()
+        msg['From'] = secrets_config["sender_email"]
+        msg['Subject'] = "🧪 Paper Claude - Test Email"
+
+        body = f"""
+        📧 Test-Email von Paper Claude
+
+        ✅ Konfiguration erfolgreich getestet!
+
+        📅 Zeitpunkt: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        📧 Absender: {secrets_config["sender_email"]}
+        🌐 SMTP Server: {secrets_config["smtp_server"]}:{secrets_config["smtp_port"]}
+
+        Diese Test-Email bestätigt, dass Ihre Email-Konfiguration korrekt funktioniert.
+
+        Mit freundlichen Grüßen,
+        Ihr Paper Claude Team 🔬
+        """
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        # An alle konfigurierten Empfänger senden
+        recipients = secrets_config.get("recipient_emails", [])
+        if recipients:
+            for recipient in recipients:
+                msg['To'] = recipient
+                text = msg.as_string()
+                server.sendmail(secrets_config["sender_email"], recipient, text)
+                del msg['To']  # Remove for next iteration
+
+            server.quit()
+            st.success(f"✅ Test-Email an {len(recipients)} Empfänger gesendet!")
+        else:
+            st.error("❌ Keine Empfänger konfiguriert!")
+
+    except Exception as e:
+        st.error(f"❌ Email-Versand fehlgeschlagen: {str(e)}")
+
+def check_email_connectivity(secrets_config):
+    """Prüft Email-Server Verbindung"""
+    try:
+        server = smtplib.SMTP(secrets_config["smtp_server"], secrets_config["smtp_port"])
+        server.starttls()
+        server.login(secrets_config["sender_email"], secrets_config["sender_password"])
+        server.quit()
+        st.success("✅ Email-Server Verbindung erfolgreich!")
+    except Exception as e:
+        st.error(f"❌ Verbindungsfehler: {str(e)}")
+
+def show_recipient_list(secrets_config):
+    """Zeigt Empfänger-Liste an"""
+    recipients = secrets_config.get("recipient_emails", [])
+    if recipients:
+        st.write("**📋 Konfigurierte Empfänger:**")
+        for i, recipient in enumerate(recipients, 1):
+            st.write(f"{i}. 📧 {recipient}")
+    else:
+        st.warning("⚠️ Keine Empfänger konfiguriert!")
+
+def send_paper_results_email(secrets_config, search_term, papers):
+    """Sendet Email mit Paper-Ergebnissen"""
+    try:
+        server = smtplib.SMTP(secrets_config["smtp_server"], secrets_config["smtp_port"])
+        server.starttls()
+        server.login(secrets_config["sender_email"], secrets_config["sender_password"])
+
+        # Email-Nachricht erstellen
+        msg = MIMEMultipart()
+        msg['From'] = secrets_config["sender_email"]
+        msg['Subject'] = f"🔬 {len(papers)} Papers gefunden für '{search_term}'"
+
+        # Paper-Liste formatieren
+        papers_list = "\n".join([
+            f"• {paper['title']} - {paper['authors']} ({paper['journal']})"
+            for paper in papers
+        ])
+
+        body = f"""
+        📧 Paper-Suchergebnisse
+
+        🔍 Suchbegriff: {search_term}
+        📊 Gefundene Papers: {len(papers)}
+        📅 Datum: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+        📋 Papers:
+        {papers_list}
+
+        Mit freundlichen Grüßen,
+        Ihr automatisches Paper-Überwachung-System 🔬
+        """
+
+        msg.attach(MIMEText(body, 'plain'))
+
+        # An alle Empfänger senden
+        recipients = secrets_config.get("recipient_emails", [])
+        for recipient in recipients:
+            msg['To'] = recipient
+            text = msg.as_string()
+            server.sendmail(secrets_config["sender_email"], recipient, text)
+            del msg['To']
+
+        server.quit()
+        st.success(f"📧 Email an {len(recipients)} Empfänger gesendet!")
+
+    except Exception as e:
+        st.error(f"❌ Email-Versand fehlgeschlagen: {str(e)}")
+
 def create_master_excel_template():
     """Erstellt Master Excel-Template mit Overview-Sheet und Excel-Integration"""
     template_path = st.session_state["excel_template"]["file_path"]

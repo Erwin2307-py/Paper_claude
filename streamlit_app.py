@@ -29,22 +29,42 @@ from google_trans_new import google_translator
 from modules.excel_manager import initialize_excel_manager, show_excel_manager_dashboard
 
 # ------------------------------------------------------------------
-# Umgebungsvariablen laden - Streamlit Cloud optimiert
+# Secrets und Umgebungsvariablen - Streamlit Cloud First
 # ------------------------------------------------------------------
 load_dotenv()
 
-# Try to get API key from multiple sources (environment, secrets)
-OPENAI_API_KEY = None
-try:
-    # First try environment variable
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+def get_secret(category, key, fallback_env_var=None):
+    """Holt Secrets zuerst aus Streamlit Secrets, dann aus Environment"""
+    try:
+        # Priorität 1: Streamlit Secrets
+        if hasattr(st, 'secrets'):
+            secret_value = st.secrets.get(category, {}).get(key)
+            if secret_value:
+                return secret_value
+    except Exception:
+        pass
 
-    # If not found, try Streamlit secrets
-    if not OPENAI_API_KEY:
-        OPENAI_API_KEY = st.secrets.get("openai", {}).get("api_key")
-except Exception:
-    # Fallback - will be handled in the app
-    pass
+    try:
+        # Priorität 2: Environment Variable
+        if fallback_env_var:
+            env_value = os.getenv(fallback_env_var)
+            if env_value:
+                return env_value
+    except Exception:
+        pass
+
+    return None
+
+# API Keys und Konfiguration aus Secrets laden
+OPENAI_API_KEY = get_secret("openai", "api_key", "OPENAI_API_KEY")
+LOGIN_USERNAME = get_secret("login", "username", "LOGIN_USERNAME")
+LOGIN_PASSWORD = get_secret("login", "password", "LOGIN_PASSWORD")
+
+# Email Konfiguration
+EMAIL_SMTP_SERVER = get_secret("email", "smtp_server", "EMAIL_SMTP_SERVER") or "smtp.gmail.com"
+EMAIL_SMTP_PORT = get_secret("email", "smtp_port", "EMAIL_SMTP_PORT") or 587
+EMAIL_SENDER = get_secret("email", "sender_email", "EMAIL_SENDER")
+EMAIL_PASSWORD = get_secret("email", "sender_password", "EMAIL_PASSWORD")
 
 # ------------------------------------------------------------------
 # Streamlit-Konfiguration
@@ -55,18 +75,63 @@ st.set_page_config(page_title="Streamlit Multi-Modul Demo", layout="wide")
 # Login-Funktionalität
 # ------------------------------------------------------------------
 def login():
-    st.title("Login")
+    st.title("🔐 Paper Claude - Login")
+
+    # Zeige Konfigurationsstatus
+    with st.expander("🔧 Konfigurationsstatus", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Login Konfiguration:**")
+            st.write(f"✅ Username: {'Konfiguriert' if LOGIN_USERNAME else '❌ Fehlt'}")
+            st.write(f"✅ Password: {'Konfiguriert' if LOGIN_PASSWORD else '❌ Fehlt'}")
+        with col2:
+            st.write("**API Konfiguration:**")
+            st.write(f"✅ OpenAI API: {'Konfiguriert' if OPENAI_API_KEY else '❌ Fehlt'}")
+            st.write(f"✅ Email SMTP: {'Konfiguriert' if EMAIL_SENDER else '❌ Fehlt'}")
+
     user_input = st.text_input("Username")
     pass_input = st.text_input("Password", type="password")
-    if st.button("Login"):
-        try:
-            if (user_input == st.secrets["login"]["username"] and 
-                pass_input == st.secrets["login"]["password"]):
-                st.session_state["logged_in"] = True
-            else:
-                st.error("Login failed. Please check your credentials!")
-        except Exception as e:
-            st.error(f"Login error: {str(e)} - Check your secrets.toml file")
+
+    if st.button("🚀 Anmelden"):
+        # Fallback falls keine Secrets konfiguriert sind
+        if not LOGIN_USERNAME or not LOGIN_PASSWORD:
+            st.warning("⚠️ Login-Secrets nicht konfiguriert. Verwende Demo-Modus.")
+            st.session_state["logged_in"] = True
+            st.session_state["demo_mode"] = True
+            st.rerun()
+        elif user_input == LOGIN_USERNAME and pass_input == LOGIN_PASSWORD:
+            st.session_state["logged_in"] = True
+            st.session_state["demo_mode"] = False
+            st.success("✅ Erfolgreich angemeldet!")
+            st.rerun()
+        else:
+            st.error("❌ Login fehlgeschlagen. Bitte prüfen Sie Ihre Zugangsdaten!")
+
+    # Hilfe für Streamlit Cloud Setup
+    if st.button("❓ Hilfe - Secrets konfigurieren"):
+        st.info("""
+        **Streamlit Cloud Secrets konfigurieren:**
+
+        1. Gehen Sie zu Ihrer App auf share.streamlit.io
+        2. Klicken Sie auf ⚙️ Settings
+        3. Wählen Sie "Secrets"
+        4. Fügen Sie folgende Konfiguration hinzu:
+
+        ```toml
+        [login]
+        username = "IhrUsername"
+        password = "IhrPasswort"
+
+        [openai]
+        api_key = "sk-IhrOpenAIKey"
+
+        [email]
+        smtp_server = "smtp.gmail.com"
+        smtp_port = 587
+        sender_email = "ihre@email.com"
+        sender_password = "IhrAppPasswort"
+        ```
+        """)
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
