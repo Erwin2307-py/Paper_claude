@@ -3,6 +3,8 @@ import streamlit as st
 import requests
 import time
 import pandas as pd
+import json
+import os
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 
@@ -20,18 +22,47 @@ class APIConfigurationManager:
     """Manages API configurations and connectivity checks"""
 
     def __init__(self):
+        self.config_file = "api_config.json"
         self.initialize_session_state()
 
     def initialize_session_state(self):
         """Initialize API configuration in session state"""
         if "api_config" not in st.session_state:
-            st.session_state["api_config"] = {
-                "configured": False,
-                "last_check": None,
-                "available_apis": [],
-                "failed_apis": [],
-                "config_version": 1.0
-            }
+            # Try to load from persistent file first
+            config = self._load_config_from_file()
+            st.session_state["api_config"] = config
+
+    def _load_config_from_file(self) -> Dict:
+        """Load API configuration from persistent file"""
+        default_config = {
+            "configured": False,
+            "last_check": None,
+            "available_apis": [],
+            "failed_apis": [],
+            "config_version": 1.0
+        }
+
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    saved_config = json.load(f)
+                    # Merge with default config to ensure all keys exist
+                    default_config.update(saved_config)
+                    return default_config
+        except Exception as e:
+            # If file is corrupted or unreadable, use default
+            pass
+
+        return default_config
+
+    def _save_config_to_file(self, config: Dict):
+        """Save API configuration to persistent file"""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            # Silently fail if cannot write file
+            pass
 
     def check_all_apis(self) -> Dict[str, APIStatus]:
         """Test all available APIs and return status"""
@@ -85,12 +116,18 @@ class APIConfigurationManager:
         available_apis = [api for api, status in results.items() if status.status]
         failed_apis = [api for api, status in results.items() if not status.status]
 
-        st.session_state["api_config"].update({
+        # Update session state
+        updated_config = {
             "last_check": time.strftime("%Y-%m-%d %H:%M:%S"),
             "available_apis": available_apis,
             "failed_apis": failed_apis,
-            "configured": len(available_apis) > 0
-        })
+            "configured": len(available_apis) > 0,
+            "config_version": 1.0
+        }
+        st.session_state["api_config"].update(updated_config)
+
+        # Persist configuration to file
+        self._save_config_to_file(st.session_state["api_config"])
 
         return results
 
@@ -173,6 +210,8 @@ class APIConfigurationManager:
         st.session_state["api_config"]["configured"] = False
         st.session_state["api_config"]["available_apis"] = []
         st.session_state["api_config"]["failed_apis"] = []
+        # Also clear from persistent file
+        self._save_config_to_file(st.session_state["api_config"])
 
 def show_api_configuration_interface():
     """Main API Configuration Interface"""
