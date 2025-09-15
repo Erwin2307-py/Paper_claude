@@ -56,45 +56,73 @@ class UnifiedPaperSearcher:
 
     def search_all_sources(self, query: str, max_results: int = 50,
                           sources: List[str] = None) -> List[Paper]:
-        """Sucht in allen verfügbaren Quellen"""
+        """Sucht in allen verfügbaren Quellen mit robuster Fehlerbehandlung"""
         if sources is None:
-            sources = ["pubmed", "semantic_scholar", "europe_pmc"]
+            sources = ["pubmed", "europe_pmc"]  # Semantic Scholar als optional
 
         all_papers = []
+        successful_sources = []
+        failed_sources = []
 
         # Progress tracking
         progress_bar = st.progress(0)
         status_text = st.empty()
 
         total_sources = len(sources)
+        per_source_limit = max(10, max_results // len(sources))
 
         for i, source in enumerate(sources):
-            status_text.text(f"🔍 Suche in {source.upper()}...")
+            source_display = source.replace('_', ' ').title()
+            status_text.text(f"🔍 Suche in {source_display}...")
             progress = (i + 0.5) / total_sources
             progress_bar.progress(progress)
 
+            papers = []
             try:
                 if source == "pubmed":
-                    papers = self.search_pubmed(query, max_results // len(sources))
+                    papers = self.search_pubmed(query, per_source_limit)
                 elif source == "semantic_scholar":
-                    papers = self.search_semantic_scholar(query, max_results // len(sources))
+                    papers = self.search_semantic_scholar(query, min(per_source_limit, 20))
                 elif source == "europe_pmc":
-                    papers = self.search_europe_pmc(query, max_results // len(sources))
+                    papers = self.search_europe_pmc(query, per_source_limit)
                 else:
-                    papers = []
+                    st.warning(f"⚠️ Unbekannte Quelle: {source}")
+                    continue
 
-                all_papers.extend(papers)
+                if papers:
+                    all_papers.extend(papers)
+                    successful_sources.append(f"{source_display} ({len(papers)} Papers)")
+                else:
+                    st.info(f"ℹ️ Keine Ergebnisse von {source_display}")
 
             except Exception as e:
-                st.warning(f"⚠️ Fehler bei {source}: {str(e)}")
+                error_msg = str(e)
+                if "429" in error_msg:
+                    st.warning(f"⚠️ Rate Limit bei {source_display} - übersprungen")
+                elif "timeout" in error_msg.lower():
+                    st.warning(f"⚠️ Timeout bei {source_display} - übersprungen")
+                else:
+                    st.warning(f"⚠️ Fehler bei {source_display}: {error_msg}")
+
+                failed_sources.append(source_display)
 
             progress = (i + 1) / total_sources
             progress_bar.progress(progress)
 
-        # Duplikate entfernen basierend auf Titel
-        unique_papers = self._remove_duplicates(all_papers)
+        # Ergebnis-Summary
+        if successful_sources:
+            st.success(f"✅ Erfolgreich: {', '.join(successful_sources)}")
 
-        status_text.text(f"✅ {len(unique_papers)} einzigartige Papers gefunden!")
+        if failed_sources:
+            st.info(f"⚠️ Übersprungen: {', '.join(failed_sources)}")
+
+        # Duplikate entfernen basierend auf Titel
+        if all_papers:
+            unique_papers = self._remove_duplicates(all_papers)
+            status_text.text(f"✅ {len(unique_papers)} einzigartige Papers von {len(successful_sources)} Quellen gefunden!")
+        else:
+            unique_papers = []
+            status_text.text("❌ Keine Papers gefunden - versuchen Sie andere Suchbegriffe")
 
         return unique_papers
 
@@ -148,30 +176,77 @@ class UnifiedPaperSearcher:
         return papers
 
     def search_semantic_scholar(self, query: str, max_results: int = 20) -> List[Paper]:
-        """Sucht in Semantic Scholar"""
+        """Sucht in Semantic Scholar mit Rate Limiting und Retry-Logic"""
         papers = []
 
         url = "https://api.semanticscholar.org/graph/v1/paper/search"
         params = {
             "query": query,
-            "limit": max_results,
+            "limit": min(max_results, 20),  # Limit auf 20 für bessere Rate Limits
             "fields": "title,authors,venue,year,abstract,url,citationCount,externalIds"
         }
 
-        try:
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        headers = {
+            "User-Agent": "Paper-Claude-Research-Tool/1.0",
+            "Accept": "application/json"
+        }
 
-            for paper_data in data.get("data", []):
-                try:
-                    paper = self._parse_semantic_scholar_paper(paper_data)
-                    papers.append(paper)
-                except Exception:
+        # Retry-Logic mit exponential backoff
+        max_retries = 3
+        base_delay = 2
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(url, params=params, headers=headers, timeout=15)
+
+                if response.status_code == 429:
+                    # Rate limit erreicht
+                    retry_after = int(response.headers.get("Retry-After", base_delay * (2 ** attempt)))
+                    if attempt < max_retries - 1:
+                        st.warning(f"⏳ Semantic Scholar Rate Limit - Warte {retry_after}s...")
+                        time.sleep(retry_after)
+                        continue
+                    else:
+                        st.warning("⚠️ Semantic Scholar Rate Limit - überspringe diese Quelle")
+                        break
+
+                elif response.status_code == 403:
+                    st.warning("⚠️ Semantic Scholar API nicht verfügbar - überspringe diese Quelle")
+                    break
+
+                response.raise_for_status()
+                data = response.json()
+
+                for paper_data in data.get("data", []):
+                    try:
+                        paper = self._parse_semantic_scholar_paper(paper_data)
+                        papers.append(paper)
+                    except Exception:
+                        continue
+
+                break  # Erfolgreicher Request
+
+            except requests.exceptions.Timeout:
+                if attempt < max_retries - 1:
+                    st.warning(f"⏳ Semantic Scholar Timeout - Retry {attempt + 1}/{max_retries}")
+                    time.sleep(base_delay * (2 ** attempt))
                     continue
+                else:
+                    st.warning("⚠️ Semantic Scholar Timeout - überspringe diese Quelle")
 
-        except Exception as e:
-            st.error(f"Semantic Scholar-Suche fehlgeschlagen: {str(e)}")
+            except Exception as e:
+                if "429" in str(e):
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        st.warning(f"⏳ Rate Limit - Warte {delay}s...")
+                        time.sleep(delay)
+                        continue
+                    else:
+                        st.warning("⚠️ Semantic Scholar Rate Limit - überspringe diese Quelle")
+                        break
+                else:
+                    st.warning(f"⚠️ Semantic Scholar-Fehler: {str(e)} - überspringe diese Quelle")
+                    break
 
         return papers
 
@@ -360,11 +435,18 @@ def show_unified_search_interface():
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        use_pubmed = st.checkbox("🏥 PubMed", value=True)
+        use_pubmed = st.checkbox("🏥 PubMed", value=True, help="NCBI PubMed - Biomedizinische Literatur")
     with col2:
-        use_semantic = st.checkbox("🔬 Semantic Scholar", value=True)
+        use_semantic = st.checkbox("🔬 Semantic Scholar", value=False, help="⚠️ Rate Limits - nur bei Bedarf aktivieren")
     with col3:
-        use_europe_pmc = st.checkbox("🌍 Europe PMC", value=True)
+        use_europe_pmc = st.checkbox("🌍 Europe PMC", value=True, help="European PubMed Central - Volltext verfügbar")
+
+    # Informative Hinweise
+    if use_semantic:
+        st.info("ℹ️ **Semantic Scholar**: Kann aufgrund von Rate Limits langsamer sein. Bei Fehlern wird die Quelle übersprungen.")
+
+    if not any([use_pubmed, use_semantic, use_europe_pmc]):
+        st.warning("⚠️ Bitte wählen Sie mindestens eine Datenbank aus!")
 
     # Options
     with st.expander("⚙️ Erweiterte Optionen"):
