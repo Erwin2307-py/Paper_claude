@@ -50,18 +50,19 @@ def get_email_secret(key, fallback=None):
 def load_email_config_from_secrets() -> Dict:
     """Lädt Email-Konfiguration aus Streamlit Secrets mit robusten Fallbacks"""
 
-    # Standard-Konfiguration mit Fallbacks
-    email_config = {
-        "sender_email": get_email_secret("sender_email"),
-        "smtp_server": get_email_secret("smtp_server", "smtp.gmail.com"),
-        "smtp_port": int(get_email_secret("smtp_port", 587)),
-        "sender_password": get_email_secret("sender_password") or get_email_secret("password"),
-        "use_tls": get_email_secret("use_tls", True),
-        "auto_notifications": get_email_secret("auto_notifications", True),
-        "min_papers": int(get_email_secret("min_papers", 1)),
-        "notification_frequency": "Bei jeder Suche",
-        "subject_template": "🔬 {count} neue Papers für '{search_term}' - {frequency}",
-        "message_template": """📧 Automatische Paper-Benachrichtigung
+    try:
+        # Standard-Konfiguration mit Fallbacks
+        email_config = {
+            "sender_email": get_email_secret("sender_email"),
+            "smtp_server": get_email_secret("smtp_server", "smtp.gmail.com"),
+            "smtp_port": int(get_email_secret("smtp_port", 587)),
+            "sender_password": get_email_secret("sender_password") or get_email_secret("password"),
+            "use_tls": get_email_secret("use_tls", True),
+            "auto_notifications": get_email_secret("auto_notifications", True),
+            "min_papers": int(get_email_secret("min_papers", 1)),
+            "notification_frequency": "Bei jeder Suche",
+            "subject_template": "🔬 {count} neue Papers für '{search_term}' - {frequency}",
+            "message_template": """📧 Automatische Paper-Benachrichtigung
 
 📅 Datum: {date}
 🔍 Suchbegriff: '{search_term}'
